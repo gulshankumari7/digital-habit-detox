@@ -1,186 +1,300 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import "./App.css";
 
 function App() {
-  // -------- Chatbot States --------
-  const [chatInput, setChatInput] = useState("");
-  const [chatReply, setChatReply] = useState("");
+  // ================= THEME =================
+  const [theme, setTheme] = useState("dark");
+  const toggleTheme = () =>
+    setTheme((t) => (t === "dark" ? "light" : "dark"));
 
-  // -------- App Usage States --------
+  // ================= NAV =================
+  const [activeSection, setActiveSection] = useState("home");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // ================= USAGE =================
   const [appName, setAppName] = useState("");
   const [category, setCategory] = useState("Social");
-  const [time, setTime] = useState("");
+  const [minutes, setMinutes] = useState("");
   const [period, setPeriod] = useState("Day");
 
-  const [usageList, setUsageList] = useState([]);
-  const [detoxScore, setDetoxScore] = useState(100);
+  const [history, setHistory] = useState([]);
+  const [score, setScore] = useState(100);
 
-  const [habitStatus, setHabitStatus] = useState("");
+  // ================= STATUS =================
+  const [status, setStatus] = useState("");
   const [suggestion, setSuggestion] = useState("");
 
-  // -------- Detox Score Logic --------
-  function calculateDetoxScore(list) {
-    let score = 100;
+  // ================= CHATBOT =================
+  const [chatInput, setChatInput] = useState("");
+  const [chatReply, setChatReply] = useState("");
+  const [listening, setListening] = useState(false);
 
-    list.forEach((item) => {
-      const t = Number(item.time);
+  // ================= LOAD HISTORY =================
+  useEffect(() => {
+    const saved = JSON.parse(localStorage.getItem("detoxHistory"));
+    if (saved && saved.length) {
+      setHistory(saved);
+      setScore(calculateScore(saved));
+    }
+  }, []);
 
-      if (item.category === "Social" && t > 60) score -= 10;
-      if (item.category === "Entertainment" && t > 90) score -= 10;
-      if (item.period === "Night" && t > 30) score -= 10;
+  // ================= SAVE HISTORY =================
+  useEffect(() => {
+    localStorage.setItem("detoxHistory", JSON.stringify(history));
+  }, [history]);
 
-      if (
-        (item.category === "Study" || item.category === "Work") &&
-        t >= 60
-      ) {
-        score += 5;
+  // ================= OBSERVE SCROLL =================
+  useEffect(() => {
+    const sections = ["home", "support", "history"];
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) setActiveSection(e.target.id);
+        });
+      },
+      { threshold: 0.6 }
+    );
+
+    sections.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  // ================= SCORE LOGIC =================
+  function calculateScore(list) {
+    let s = 100;
+
+    list.forEach((i) => {
+      const t = Number(i.minutes);
+
+      if (i.category === "Social") {
+        if (t > 60 && t <= 120) s -= 10;
+        else if (t > 120 && t <= 180) s -= 20;
+        else if (t > 180) s -= 30;
+      }
+
+      if (i.category === "Entertainment") {
+        if (t > 90 && t <= 150) s -= 10;
+        else if (t > 150) s -= 20;
+      }
+
+      if (i.period === "Night") {
+        if (t > 30 && t <= 60) s -= 10;
+        else if (t > 60) s -= 20;
+      }
+
+      if ((i.category === "Study" || i.category === "Work") && t >= 60) {
+        s += 5;
       }
     });
 
-    return Math.min(100, Math.max(0, score));
+    return Math.max(0, Math.min(s, 100));
   }
 
-  // -------- Status & Suggestion --------
-  function updateStatusAndSuggestion(score) {
-    if (score >= 80) {
-      setHabitStatus("🟢 Healthy Digital Habits");
-      setSuggestion(
-        "You have a balanced digital routine. Continue limiting late-night usage to stay productive."
-      );
-    } else if (score >= 50) {
-      setHabitStatus("🟡 At-Risk Digital Habits");
-      setSuggestion(
-        "Your screen time is increasing. Reduce social and entertainment usage and avoid late-night scrolling."
-      );
-    } else {
-      setHabitStatus("🔴 Digital Addiction Risk");
-      setSuggestion(
-        "High digital dependency detected. Set daily screen limits and create phone-free time at night."
-      );
-    }
-  }
-
+  // ================= STATUS =================
   useEffect(() => {
-    updateStatusAndSuggestion(detoxScore);
-  }, [detoxScore]);
+    if (score >= 80) {
+      setStatus("🟢 Healthy Digital Habits");
+      setSuggestion("Your digital routine is balanced. Keep it up!");
+    } else if (score >= 50) {
+      setStatus("🟡 At Risk");
+      setSuggestion("Reduce social & entertainment usage, especially at night.");
+    } else {
+      setStatus("🔴 Digital Addiction Risk");
+      setSuggestion("Strong detox needed. Create phone-free hours.");
+    }
+  }, [score]);
 
-  // -------- Add Usage --------
-  function handleAddUsage() {
-    if (!appName || !time) {
-      alert("Please enter app name and time 🙂");
+  // ================= ADD USAGE =================
+  function handleAdd() {
+    if (!appName || !minutes) {
+      alert("Enter app name and minutes");
       return;
     }
 
-    const updatedList = [
-      ...usageList,
-      { appName, category, time, period },
-    ];
+    const entry = {
+      appName,
+      category,
+      minutes,
+      period,
+      date: new Date().toLocaleString(),
+    };
 
-    setUsageList(updatedList);
-    setDetoxScore(calculateDetoxScore(updatedList));
+    const updated = [entry, ...history];
+    setHistory(updated);
+    setScore(calculateScore(updated));
 
     setAppName("");
-    setTime("");
+    setMinutes("");
   }
 
-  // -------- Chatbot Logic --------
-  function handleChat() {
-    const msg = chatInput.toLowerCase();
-
-    if (msg.includes("reduce")) {
-      setChatReply("Start by reducing 15–20 minutes of social media per day.");
-    } else if (msg.includes("night")) {
-      setChatReply("Avoid screen usage at least 30 minutes before bedtime.");
-    } else if (msg.includes("score")) {
-      setChatReply(
-        `Your current Detox Score is ${detoxScore}. Aim for 80+ for healthy habits.`
-      );
-    } else {
-      setChatReply(
-        "I can help with digital detox tips. Ask me about screen time, night usage, or improving your score."
-      );
+  function clearHistory() {
+    if (window.confirm("Clear all history?")) {
+      setHistory([]);
+      setScore(100);
+      localStorage.removeItem("detoxHistory");
     }
-
-    setChatInput("");
   }
 
-  // -------- UI --------
+  // ================= CHATBOT =================
+  function speak(text) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US";
+    window.speechSynthesis.speak(u);
+  }
+
+  function generateReply(text) {
+    const msg = text.toLowerCase();
+    let reply = "";
+
+    if (msg.includes("score")) reply = `Your detox score is ${score}.`;
+    else if (msg.includes("social"))
+      reply = "Try to keep social media below 60 minutes daily.";
+    else if (msg.includes("night"))
+      reply = "Avoid screens 30 minutes before sleep.";
+    else reply = "Ask about score, social media or night usage.";
+
+    setChatReply(reply);
+    speak(reply);
+  }
+
+  function startListening() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return alert("Use Chrome for voice support.");
+
+    const r = new SR();
+    r.lang = "en-US";
+    r.onstart = () => setListening(true);
+    r.onend = () => setListening(false);
+    r.onresult = (e) => generateReply(e.results[0][0].transcript);
+    r.start();
+  }
+
   return (
-    <div className="container">
-      <h1>📱 Digital Habit Detox Analyzer</h1>
-      <p className="subtitle">
-        Enter your daily app usage and get personalized digital wellness feedback
-      </p>
+    <div className={`app ${theme}`}>
+      {/* ================= NAVBAR ================= */}
+      <header className="navbar">
+        <div className="nav-left">
+          <h2>Digital Detox</h2>
+        </div>
 
-      <form>
-        <input
-          type="text"
-          placeholder="App Name"
-          value={appName}
-          onChange={(e) => setAppName(e.target.value)}
-        />
+        <nav className={`nav-links ${menuOpen ? "open" : ""}`}>
+          <a
+            href="#home"
+            className={activeSection === "home" ? "active" : ""}
+            onClick={() => setMenuOpen(false)}
+          >
+            Home
+          </a>
+          <a
+            href="#support"
+            className={activeSection === "support" ? "active" : ""}
+            onClick={() => setMenuOpen(false)}
+          >
+            Support
+          </a>
+          <a
+            href="#history"
+            className={activeSection === "history" ? "active" : ""}
+            onClick={() => setMenuOpen(false)}
+          >
+            History
+          </a>
+        </nav>
 
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option>Social</option>
-          <option>Entertainment</option>
-          <option>Study</option>
-          <option>Work</option>
-        </select>
+        <div className="nav-right">
+          <button className="theme-btn" onClick={toggleTheme}>
+            {theme === "dark" ? "🌙 Dark" : "☀ Light"}
+          </button>
 
-        <input
-          type="number"
-          placeholder="Minutes"
-          value={time}
-          onChange={(e) => setTime(e.target.value)}
-        />
+          <div className="hamburger" onClick={() => setMenuOpen(!menuOpen)}>
+            ☰
+          </div>
+        </div>
+      </header>
 
-        <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-          <option>Day</option>
-          <option>Night</option>
-        </select>
+      {/* ================= MAIN ================= */}
+      <main id="home" className="main">
+        <h1>Digital Habit Detox Analyzer</h1>
 
-        <button type="button" onClick={handleAddUsage}>
-          Add Usage
-        </button>
-      </form>
+        <section className="card">
+          <h3>Add App Usage</h3>
+          <div className="form-grid">
+            <input placeholder="App name" value={appName} onChange={(e) => setAppName(e.target.value)} />
+            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option>Social</option>
+              <option>Entertainment</option>
+              <option>Study</option>
+              <option>Work</option>
+            </select>
+            <input type="number" placeholder="Minutes" value={minutes} onChange={(e) => setMinutes(e.target.value)} />
+            <select value={period} onChange={(e) => setPeriod(e.target.value)}>
+              <option>Day</option>
+              <option>Night</option>
+            </select>
+            <button onClick={handleAdd}>Add</button>
+          </div>
+        </section>
 
-      <div className="card">
-        <h2>Detox Score</h2>
-        <div className="score">{detoxScore} / 100</div>
-        <h3>{habitStatus}</h3>
-        <p>{suggestion}</p>
-      </div>
+        <section className="card">
+          <h3>Detox Score</h3>
+          <div className="score">{score} / 100</div>
+            <div className="progress-wrap">
+              <div
+               className={`progress-bar ${
+               score >= 80 ? "good" : score >= 50 ? "warn" : "bad"
+              }`}
+              style={{ width: `${score}%` }}
+              />
+            </div>
 
-      <div className="card">
-        <h2>Daily Usage List</h2>
-        {usageList.length === 0 ? (
-          <p>No data added yet</p>
-        ) : (
-          <ul>
-            {usageList.map((item, index) => (
-              <li key={index}>
-                {item.appName} – {item.category} – {item.time} min – {item.period}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
 
-      {/* ✅ AI CHATBOT */}
-      <div className="card">
-        <h2>🤖 AI Wellness Assistant</h2>
+          <p>{status}</p>
+          <p className="hint">{suggestion}</p>
+          {history.length > 0 && <button onClick={clearHistory}>Clear History</button>}
+        </section>
 
-        <input
-          type="text"
-          placeholder="Ask me about detox, night usage, score..."
-          value={chatInput}
-          onChange={(e) => setChatInput(e.target.value)}
-        />
-        <button onClick={handleChat} style={{ marginLeft: "10px" }}>
-          Ask
-        </button>
+        <section id="history" className="card">
+          <h3>Usage History</h3>
+          {history.length === 0 ? (
+            <p className="hint">No history yet</p>
+          ) : (
+            <ul>
+              {history.map((h, i) => (
+                <li key={i}>
+                  <strong>{h.appName}</strong> • {h.category} • {h.minutes} min • {h.period}
+                  <br />
+                  <small>{h.date}</small>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
-        {chatReply && <p style={{ marginTop: "10px" }}>{chatReply}</p>}
-      </div>
+        <section id="support" className="card">
+          <h3>🤖 AI Voice Assistant</h3>
+          <div className="chat">
+            <input
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Ask something..."
+            />
+            <button onClick={() => generateReply(chatInput)}>Ask</button>
+            <button onClick={startListening}>
+              {listening ? "Listening..." : "🎙 Voice"}
+            </button>
+          </div>
+          {chatReply && <p className="chat-reply">{chatReply}</p>}
+        </section>
+      </main>
+
+      <footer className="footer">© 2025 Digital Detox</footer>
     </div>
   );
 }
