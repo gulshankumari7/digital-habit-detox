@@ -1,7 +1,11 @@
+// ✅ dotenv ALWAYS FIRST
+require("dotenv").config();
+
+console.log("ENV URI =", process.env.MONGODB_URI);
+
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-require("dotenv").config();
 
 const Usage = require("./models/Usage");
 
@@ -9,15 +13,15 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // middlewares
-app.use(cors({ origin: "http://localhost:5173" })); // React dev URL
+app.use(cors({ origin: "http://localhost:5173" }));
 app.use(express.json());
 
-// simple health check
+// health check
 app.get("/", (req, res) => {
-  res.send("Digital Detox API running");
+  res.send("✅ Digital Detox API running");
 });
 
-// POST /api/usage  -> save one usage entry
+// POST /api/usage
 app.post("/api/usage", async (req, res) => {
   try {
     const { appName, category, minutes, period } = req.body;
@@ -40,7 +44,7 @@ app.post("/api/usage", async (req, res) => {
   }
 });
 
-// GET /api/usage  -> get all usage (later: by user / date)
+// GET /api/usage
 app.get("/api/usage", async (req, res) => {
   try {
     const list = await Usage.find().sort({ createdAt: -1 });
@@ -51,16 +55,17 @@ app.get("/api/usage", async (req, res) => {
   }
 });
 
-// connect DB & start server
+// ✅ CONNECT DB & START SERVER (ONLY ONCE)
 async function start() {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log("MongoDB connected");
+    console.log("✅ MongoDB connected");
+
     app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`✅ Server running on http://localhost:${PORT}`);
     });
   } catch (err) {
-    console.error("DB connection failed:", err);
+    console.error("❌ DB connection failed:", err.message);
     process.exit(1);
   }
 }
