@@ -1,5 +1,37 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import "./App.css";
+
+// ----------------- HELPER: SCORE CALCULATION -----------------
+function calculateScore(list) {
+  let s = 100;
+
+  list.forEach((i) => {
+    const t = Number(i.minutes);
+
+    if (i.category === "Social") {
+      if (t > 60 && t <= 120) s -= 10;
+      else if (t > 120 && t <= 180) s -= 20;
+      else if (t > 180) s -= 30;
+    }
+
+    if (i.category === "Entertainment") {
+      if (t > 90 && t <= 150) s -= 10;
+      else if (t > 150) s -= 20;
+    }
+
+    if (i.period === "Night") {
+      if (t > 30 && t <= 60) s -= 10;
+      else if (t > 60) s -= 20;
+    }
+
+    if ((i.category === "Study" || i.category === "Work") && t >= 60) {
+      s += 5;
+    }
+  });
+
+  return Math.max(0, Math.min(s, 100));
+}
 
 function App() {
   // ================= THEME =================
@@ -29,21 +61,24 @@ function App() {
   const [chatReply, setChatReply] = useState("");
   const [listening, setListening] = useState(false);
 
-  // ================= LOAD HISTORY =================
+  const API_BASE = "http://localhost:5000";
+
+  // ================= LOAD HISTORY FROM BACKEND =================
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem("detoxHistory"));
-    if (saved && saved.length) {
-      setHistory(saved);
-      setScore(calculateScore(saved));
+    async function fetchHistory() {
+      try {
+        const res = await axios.get(`${API_BASE}/api/usage`);
+        setHistory(res.data);
+        setScore(calculateScore(res.data));
+      } catch (err) {
+        console.error("Error loading history:", err.message);
+      }
     }
-  }, []);
 
-  // ================= SAVE HISTORY =================
-  useEffect(() => {
-    localStorage.setItem("detoxHistory", JSON.stringify(history));
-  }, [history]);
+    fetchHistory();
+  }, []); // only once on page load
 
-  // ================= OBSERVE SCROLL =================
+  // ================= OBSERVE SCROLL (ACTIVE NAV) =================
   useEffect(() => {
     const sections = ["home", "support", "history"];
 
@@ -64,79 +99,60 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
-  // ================= SCORE LOGIC =================
-  function calculateScore(list) {
-    let s = 100;
-
-    list.forEach((i) => {
-      const t = Number(i.minutes);
-
-      if (i.category === "Social") {
-        if (t > 60 && t <= 120) s -= 10;
-        else if (t > 120 && t <= 180) s -= 20;
-        else if (t > 180) s -= 30;
-      }
-
-      if (i.category === "Entertainment") {
-        if (t > 90 && t <= 150) s -= 10;
-        else if (t > 150) s -= 20;
-      }
-
-      if (i.period === "Night") {
-        if (t > 30 && t <= 60) s -= 10;
-        else if (t > 60) s -= 20;
-      }
-
-      if ((i.category === "Study" || i.category === "Work") && t >= 60) {
-        s += 5;
-      }
-    });
-
-    return Math.max(0, Math.min(s, 100));
-  }
-
-  // ================= STATUS =================
+  // ================= STATUS TEXT =================
   useEffect(() => {
     if (score >= 80) {
       setStatus("🟢 Healthy Digital Habits");
       setSuggestion("Your digital routine is balanced. Keep it up!");
     } else if (score >= 50) {
       setStatus("🟡 At Risk");
-      setSuggestion("Reduce social & entertainment usage, especially at night.");
+      setSuggestion(
+        "Reduce social & entertainment usage, especially at night."
+      );
     } else {
       setStatus("🔴 Digital Addiction Risk");
       setSuggestion("Strong detox needed. Create phone-free hours.");
     }
   }, [score]);
 
-  // ================= ADD USAGE =================
-  function handleAdd() {
+  // ================= ADD USAGE (BACKEND + STATE) =================
+  async function handleAdd() {
     if (!appName || !minutes) {
       alert("Enter app name and minutes");
       return;
     }
 
-    const entry = {
-      appName,
-      category,
-      minutes,
-      period,
-      date: new Date().toLocaleString(),
-    };
+    try {
+      const payload = {
+        appName,
+        category,
+        minutes: Number(minutes),
+        period,
+      };
 
-    const updated = [entry, ...history];
-    setHistory(updated);
-    setScore(calculateScore(updated));
+      // ➜ Save to backend
+      const res = await axios.post(`${API_BASE}/api/usage`, payload);
+      const saved = res.data;
 
-    setAppName("");
-    setMinutes("");
+      // ➜ Update frontend state (newest on top)
+      const updated = [saved, ...history];
+      setHistory(updated);
+      setScore(calculateScore(updated));
+
+      // clear inputs
+      setAppName("");
+      setMinutes("");
+    } catch (err) {
+      console.error("Error saving usage:", err.message);
+      alert("Failed to save usage. Check backend console.");
+    }
   }
 
   function clearHistory() {
-    if (window.confirm("Clear all history?")) {
+    // Optional: just frontend clear for now
+    if (window.confirm("Clear history locally? (DB me abhi rahega)")) {
       setHistory([]);
       setScore(100);
-      localStorage.removeItem("detoxHistory");
     }
   }
 
@@ -158,7 +174,9 @@ function App() {
       reply = "Try to keep social media below 60 minutes daily.";
     else if (msg.includes("night"))
       reply = "Avoid screens 30 minutes before sleep.";
-    else reply = "Ask about score, social media or night usage.";
+    else
+      reply =
+        "I can guide you on screen time, social media and night usage. Ask about your score or how to improve it.";
 
     setChatReply(reply);
     speak(reply);
@@ -176,9 +194,10 @@ function App() {
     r.start();
   }
 
+  // ================= UI =================
   return (
     <div className={`app ${theme}`}>
-      {/* ================= NAVBAR ================= */}
+      {/* NAVBAR */}
       <header className="navbar">
         <div className="nav-left">
           <h2>Digital Detox</h2>
@@ -219,21 +238,34 @@ function App() {
         </div>
       </header>
 
-      {/* ================= MAIN ================= */}
+      {/* MAIN */}
       <main id="home" className="main">
         <h1>Digital Habit Detox Analyzer</h1>
 
+        {/* Add Usage */}
         <section className="card">
           <h3>Add App Usage</h3>
           <div className="form-grid">
-            <input placeholder="App name" value={appName} onChange={(e) => setAppName(e.target.value)} />
-            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <input
+              placeholder="App name"
+              value={appName}
+              onChange={(e) => setAppName(e.target.value)}
+            />
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
               <option>Social</option>
               <option>Entertainment</option>
               <option>Study</option>
               <option>Work</option>
             </select>
-            <input type="number" placeholder="Minutes" value={minutes} onChange={(e) => setMinutes(e.target.value)} />
+            <input
+              type="number"
+              placeholder="Minutes"
+              value={minutes}
+              onChange={(e) => setMinutes(e.target.value)}
+            />
             <select value={period} onChange={(e) => setPeriod(e.target.value)}>
               <option>Day</option>
               <option>Night</option>
@@ -242,48 +274,49 @@ function App() {
           </div>
         </section>
 
+        {/* Detox Score */}
         <section className="card">
           <h3>Detox Score</h3>
-          <div className="score">{score} / 100</div>
-            <div className="progress-wrap">
-              <div
-               className={`progress-bar ${
-               score >= 80 ? "good" : score >= 50 ? "warn" : "bad"
-              }`}
-              style={{ width: `${score}%` }}
-              />
-            </div>
-
-
-          <p>{status}</p>
-          <p className="hint">{suggestion}</p>
-          {history.length > 0 && <button onClick={clearHistory}>Clear History</button>}
+          <div className="score-display">{score} / 100</div>
+          <p className="status-text">{status}</p>
+          <p className="hint-text">{suggestion}</p>
+          {history.length > 0 && (
+            <button onClick={clearHistory}>Clear History</button>
+          )}
         </section>
 
+        {/* Usage History */}
         <section id="history" className="card">
           <h3>Usage History</h3>
           {history.length === 0 ? (
-            <p className="hint">No history yet</p>
+            <p className="hint-text">No history yet</p>
           ) : (
-            <ul>
-              {history.map((h, i) => (
-                <li key={i}>
-                  <strong>{h.appName}</strong> • {h.category} • {h.minutes} min • {h.period}
+            <ul className="usage-list">
+              {history.map((h) => (
+                <li key={h._id}>
+                  <strong>{h.appName}</strong> • {h.category} • {h.minutes} min •{" "}
+                  {h.period}
                   <br />
-                  <small>{h.date}</small>
+                  <small>
+                    {new Date(h.createdAt).toLocaleString(undefined, {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })}
+                  </small>
                 </li>
               ))}
             </ul>
           )}
         </section>
 
+        {/* AI Assistant */}
         <section id="support" className="card">
           <h3>🤖 AI Voice Assistant</h3>
-          <div className="chat">
+          <div className="chat-row">
             <input
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Ask something..."
+              placeholder="Ask something about your digital habits..."
             />
             <button onClick={() => generateReply(chatInput)}>Ask</button>
             <button onClick={startListening}>
@@ -291,6 +324,12 @@ function App() {
             </button>
           </div>
           {chatReply && <p className="chat-reply">{chatReply}</p>}
+
+          <ul className="support-list">
+            <li>Try: "How to reduce social media?"</li>
+            <li>Try: "Is my score good?"</li>
+            <li>Try: "Is night usage bad?"</li>
+          </ul>
         </section>
       </main>
 
