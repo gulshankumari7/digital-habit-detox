@@ -1,51 +1,81 @@
 import { useState } from "react";
 import "../App.css";
+import API_URL from "../api";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin(e) {
+  async function handleLogin(e) {
     e.preventDefault();
 
     if (!email || !password) {
-      alert("Please enter email & password");
+      alert("Please fill all fields");
       return;
     }
 
-    // ✅ TEMP AUTH (backend later)
-    localStorage.setItem("token", "demo_token");
+    try {
+      setLoading(true);
 
-    // redirect to dashboard
-    window.location.href = "/";
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "Login failed");
+        return;
+      }
+
+      // ✅ Save token
+      localStorage.setItem("token", data.token);
+
+      alert("✅ Login successful");
+      window.location.href = "/"; // or /dashboard
+    } catch (err) {
+      console.error(err);
+      alert("❌ Server error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
- <div className="auth-wrapper">
-  <div className="auth-card">
-    <h2>Digital Detox</h2>
-    <p>Sign in to track your digital habits</p>
+    <div className="auth-page">
+      <div className="auth-card">
+        <h2>Login</h2>
 
-    <input
-      placeholder="Email"
-      value={email}
-      onChange={(e) => setEmail(e.target.value)}
-    />
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
 
-    <input
-      type="password"
-      placeholder="Password"
-      value={password}
-      onChange={(e) => setPassword(e.target.value)}
-    />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
-    <button onClick={handleLogin}>Login</button>
+        <button onClick={handleLogin} disabled={loading}>
+          {loading ? "Logging in..." : "Login"}
+        </button>
 
-    <div className="auth-footer">
-      New user? <a href="/register">Register</a>
+        <p className="auth-text">
+          New user? <a href="/register">Register</a>
+        </p>
+      </div>
     </div>
-  </div>
-</div>
-  
   );
 }
