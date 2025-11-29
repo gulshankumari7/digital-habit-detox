@@ -5,32 +5,36 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 
+const authRoutes = require("./routes/auth");
 const Usage = require("./models/Usage");
+const auth = require("./middleware/auth");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ✅ MIDDLEWARES
-app.use(cors({ origin: "http://localhost:5173" })); // Vite frontend
+app.use(cors({ origin: "http://localhost:5173" }));
 app.use(express.json());
+
+// ✅ AUTH ROUTES
+app.use("/api/auth", authRoutes);
 
 // ✅ HEALTH CHECK
 app.get("/", (req, res) => {
   res.send("✅ Digital Detox API running");
 });
 
-// ✅ POST: Add app usage
-app.post("/api/usage", async (req, res) => {
+// ✅ POST: Add usage (AUTH REQUIRED)
+app.post("/api/usage", auth, async (req, res) => {
   try {
     const { appName, category, minutes, period } = req.body;
 
-    if (!appName || !minutes || !category || !period) {
-      return res.status(400).json({
-        message: "All fields are required",
-      });
+    if (!appName || !category || !minutes || !period) {
+      return res.status(400).json({ message: "All fields required" });
     }
 
     const usage = await Usage.create({
+      user: req.user.id, // ✅ FIXED
       appName,
       category,
       minutes,
@@ -44,10 +48,12 @@ app.post("/api/usage", async (req, res) => {
   }
 });
 
-// ✅ GET: Fetch usage history
-app.get("/api/usage", async (req, res) => {
+// ✅ GET: Fetch user usage (AUTH REQUIRED)
+app.get("/api/usage", auth, async (req, res) => {
   try {
-    const list = await Usage.find().sort({ createdAt: -1 });
+    const list = await Usage.find({ user: req.user.id }) // ✅ FIXED
+      .sort({ createdAt: -1 });
+
     res.json(list);
   } catch (err) {
     console.error("❌ Fetch error:", err);
@@ -55,28 +61,27 @@ app.get("/api/usage", async (req, res) => {
   }
 });
 
-// ✅ DELETE: Clear all history
-app.delete("/api/usage", async (req, res) => {
+// ✅ DELETE: Clear user history (AUTH REQUIRED)
+app.delete("/api/usage", auth, async (req, res) => {
   try {
-    await Usage.deleteMany({});
-    res.json({ message: "✅ All history cleared" });
+    await Usage.deleteMany({ user: req.user.id }); // ✅ FIXED
+    res.json({ message: "✅ User history cleared" });
   } catch (err) {
     console.error("❌ Delete error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// ✅ CONNECT DB & START SERVER (ONLY ONCE)
+// ✅ CONNECT DB & START SERVER
 async function startServer() {
   try {
     console.log("🌍 Connecting to MongoDB...");
     await mongoose.connect(process.env.MONGODB_URI);
 
     console.log("✅ MongoDB connected");
-
-    app.listen(PORT, () => {
-      console.log(`✅ Server running on http://localhost:${PORT}`);
-    });
+    app.listen(PORT, () =>
+      console.log(`✅ Server running at http://localhost:${PORT}`)
+    );
   } catch (err) {
     console.error("❌ DB connection failed:", err.message);
     process.exit(1);

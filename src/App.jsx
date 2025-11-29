@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import "./App.css";
+// import { Routes, Route, Navigate } from "react-router-dom";
+// import Dashboard from "./pages/Dashboard";
+// import Login from "./pages/Login";
+// import Register from "./pages/Register";
+
 
 // ----------------- HELPER: SCORE CALCULATION -----------------
 function calculateScore(list) {
+
   let s = 100;
 
   list.forEach((i) => {
@@ -34,6 +40,11 @@ function calculateScore(list) {
 }
 
 function App() {
+  
+  if (!localStorage.getItem("token")) {
+  window.location.href = "/login";
+}
+
   // ================= THEME =================
   const [theme, setTheme] = useState("dark");
   const toggleTheme = () =>
@@ -77,6 +88,10 @@ function App() {
 
     fetchHistory();
   }, []); // only once on page load
+function handleLogout() {
+  localStorage.removeItem("token");
+  window.location.href = "/login";
+}
 
   // ================= OBSERVE SCROLL (ACTIVE NAV) =================
   useEffect(() => {
@@ -227,15 +242,20 @@ function App() {
           </a>
         </nav>
 
-        <div className="nav-right">
-          <button className="theme-btn" onClick={toggleTheme}>
-            {theme === "dark" ? "🌙 Dark" : "☀ Light"}
-          </button>
+       <div className="nav-right">
+  <button className="theme-btn" onClick={toggleTheme}>
+    {theme === "dark" ? "🌙 Dark" : "☀ Light"}
+  </button>
 
-          <div className="hamburger" onClick={() => setMenuOpen(!menuOpen)}>
-            ☰
-          </div>
-        </div>
+  <button className="logout-btn" onClick={handleLogout}>
+    Logout
+  </button>
+
+  <div className="hamburger" onClick={() => setMenuOpen(!menuOpen)}>
+    ☰
+  </div>
+</div>
+
       </header>
 
       {/* MAIN */}
@@ -278,8 +298,19 @@ function App() {
         <section className="card">
           <h3>Detox Score</h3>
           <div className="score-display">{score} / 100</div>
-          <p className="status-text">{status}</p>
-          <p className="hint-text">{suggestion}</p>
+
+<div className="progress-wrap">
+  <div
+    className={`progress-bar ${
+      score >= 80 ? "good" : score >= 50 ? "warn" : "bad"
+    }`}
+    style={{ width: `${score}%` }}
+  ></div>
+</div>
+
+<p className="status-text">{status}</p>
+<p className="hint-text">{suggestion}</p>
+
           {history.length > 0 && (
             <button onClick={clearHistory}>Clear History</button>
           )}
@@ -319,9 +350,15 @@ function App() {
               placeholder="Ask something about your digital habits..."
             />
             <button onClick={() => generateReply(chatInput)}>Ask</button>
-            <button onClick={startListening}>
-              {listening ? "Listening..." : "🎙 Voice"}
-            </button>
+            <button
+  className={`voice-btn ${listening ? "listening" : ""}`}
+  onClick={startListening}
+>
+  <span className="mic">🎙</span>
+  <span>{listening ? "Listening" : "Voice"}</span>
+  {listening && <span className="wave"></span>}
+</button>
+
           </div>
           {chatReply && <p className="chat-reply">{chatReply}</p>}
 
