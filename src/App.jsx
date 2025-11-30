@@ -16,35 +16,42 @@ import "./App.css";
 
 // ----------------- HELPER: SCORE CALCULATION -----------------
 function calculateScore(list) {
+  let score = 100;
 
-  let s = 100;
+  let totalSocial = 0;
+  let totalEntertainment = 0;
+  let totalNight = 0;
 
   list.forEach((i) => {
     const t = Number(i.minutes);
 
-    if (i.category === "Social") {
-      if (t > 60 && t <= 120) s -= 10;
-      else if (t > 120 && t <= 180) s -= 20;
-      else if (t > 180) s -= 30;
-    }
-
-    if (i.category === "Entertainment") {
-      if (t > 90 && t <= 150) s -= 10;
-      else if (t > 150) s -= 20;
-    }
-
-    if (i.period === "Night") {
-      if (t > 30 && t <= 60) s -= 10;
-      else if (t > 60) s -= 20;
-    }
+    if (i.category === "Social") totalSocial += t;
+    if (i.category === "Entertainment") totalEntertainment += t;
+    if (i.period === "Night") totalNight += t;
 
     if ((i.category === "Study" || i.category === "Work") && t >= 60) {
-      s += 5;
+      score += 5;
     }
   });
 
-  return Math.max(0, Math.min(s, 100));
+  // ✅ Social usage
+  if (totalSocial > 60 && totalSocial <= 120) score -= 10;
+  else if (totalSocial > 120 && totalSocial <= 180) score -= 20;
+  else if (totalSocial > 180) score -= 30;
+
+  // ✅ Entertainment
+  if (totalEntertainment > 90 && totalEntertainment <= 150) score -= 10;
+  else if (totalEntertainment > 150) score -= 20;
+
+  // ✅ Night usage (MOST IMPORTANT FIX)
+  if (totalNight > 30 && totalNight <= 60) score -= 10;
+  else if (totalNight > 60 && totalNight <= 120) score -= 20;
+  else if (totalNight > 120) score -= 30;
+
+  return Math.max(0, Math.min(score, 100));
 }
+
+
 
 function App() {
   
@@ -76,7 +83,8 @@ function App() {
 
   // ================= CHATBOT =================
   const [chatInput, setChatInput] = useState("");
-  const [chatReply, setChatReply] = useState("");
+  const [chatMessages, setChatMessages] = useState([]);
+
   const [listening, setListening] = useState(false);
 
   const API_BASE = "http://localhost:5000";
@@ -85,7 +93,14 @@ function App() {
   useEffect(() => {
     async function fetchHistory() {
       try {
-        const res = await axios.get(`${API_BASE}/api/usage`);
+        const token = localStorage.getItem("token");
+
+const res = await axios.get(`${API_BASE}/api/usage`, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
+
         setHistory(res.data);
         setScore(calculateScore(res.data));
       } catch (err) {
@@ -153,7 +168,18 @@ function handleLogout() {
       };
 
       // ➜ Save to backend
-      const res = await axios.post(`${API_BASE}/api/usage`, payload);
+      const token = localStorage.getItem("token");
+
+const res = await axios.post(
+  `${API_BASE}/api/usage`,
+  payload,
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
+
       const saved = res.data;
 
       // ➜ Update frontend state (newest on top)
@@ -170,13 +196,27 @@ function handleLogout() {
     }
   }
 
-  function clearHistory() {
-    // Optional: just frontend clear for now
-    if (window.confirm("Clear history locally? (DB me abhi rahega)")) {
-      setHistory([]);
-      setScore(100);
-    }
+  async function clearHistory() {
+  if (!window.confirm("Clear *all* usage history?")) return;
+
+  try {
+    const token = localStorage.getItem("token");
+
+    await axios.delete(`${API_BASE}/api/usage`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    setHistory([]);
+    setScore(100);
+    alert("History cleared ✅");
+  } catch (err) {
+    console.error("Delete error:", err.message);
+    alert("Failed to clear history. Check backend console.");
   }
+}
+
 
   // ================= CHATBOT =================
   function speak(text) {
@@ -187,22 +227,55 @@ function handleLogout() {
     window.speechSynthesis.speak(u);
   }
 
-  function generateReply(text) {
-    const msg = text.toLowerCase();
-    let reply = "";
 
-    if (msg.includes("score")) reply = `Your detox score is ${score}.`;
-    else if (msg.includes("social"))
-      reply = "Try to keep social media below 60 minutes daily.";
-    else if (msg.includes("night"))
-      reply = "Avoid screens 30 minutes before sleep.";
-    else
-      reply =
-        "I can guide you on screen time, social media and night usage. Ask about your score or how to improve it.";
+function generateReply(text) {
+  if (!text.trim()) return;
 
-    setChatReply(reply);
-    speak(reply);
+  const msg = text.toLowerCase();
+  let reply = "";
+
+  const totalNight = history
+    .filter(h => h.period === "Night")
+    .reduce((a,b)=>a+b.minutes,0);
+
+  const totalSocial = history
+    .filter(h => h.category === "Social")
+    .reduce((a,b)=>a+b.minutes,0);
+
+  if (msg.includes("score")) {
+    reply = `Your detox score is ${score}/100.`;
   }
+
+  else if (msg.includes("night")) {
+    reply = totalNight > 60
+      ? `Your night usage is ${totalNight} minutes. Try stopping screens 30 mins before bed.`
+      : "Your night usage is healthy 👍";
+  }
+
+  else if (msg.includes("social")) {
+    reply = totalSocial > 120
+      ? `Social usage is ${totalSocial} minutes. Try limiting to 1 hour daily.`
+      : "Your social usage looks fine 👍";
+  }
+
+  else if (msg.includes("hindi")) {
+    reply = "Aapka digital usage moderate hai. Raat me phone kam use karna behtar hoga 👍";
+  }
+
+  else if (msg.includes("motivate")) {
+    reply = "Small changes daily will make big improvements. You’re doing well 💪";
+  }
+
+  else {
+    reply =
+      "Ask me about your score, night usage, social media or say 'Hindi' 🙂";
+  }
+
+  setChatReply(reply);
+  speak(reply);
+}
+
+
 
   function startListening() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -297,7 +370,10 @@ function handleLogout() {
               <option>Day</option>
               <option>Night</option>
             </select>
-            <button onClick={handleAdd}>Add</button>
+            <button className="add-btn" onClick={handleAdd}>
+  Add
+</button>
+
           </div>
         </section>
 
@@ -319,8 +395,11 @@ function handleLogout() {
 <p className="hint-text">{suggestion}</p>
 
           {history.length > 0 && (
-            <button onClick={clearHistory}>Clear History</button>
-          )}
+  <button className="clear-btn" onClick={clearHistory}>
+    🗑 Clear History
+  </button>
+)}
+
         </section>
 
         {/* Usage History */}
@@ -352,10 +431,15 @@ function handleLogout() {
           <h3>🤖 AI Voice Assistant</h3>
           <div className="chat-row">
             <input
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Ask something about your digital habits..."
-            />
+  value={chatInput}
+  onChange={(e) => setChatInput(e.target.value)}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") generateReply(chatInput);
+  }}
+  placeholder="Ask about your digital habits..."
+/>
+
+
             <button onClick={() => generateReply(chatInput)}>Ask</button>
             <button
   className={`voice-btn ${listening ? "listening" : ""}`}
@@ -367,13 +451,40 @@ function handleLogout() {
 </button>
 
           </div>
-          {chatReply && <p className="chat-reply">{chatReply}</p>}
+          <div className="chat-box">
+  {chatMessages.map((m, i) => (
+    <div
+      key={i}
+      className={`chat-bubble ${m.type === "user" ? "user" : "bot"}`}
+    >
+      {m.text}
+    </div>
+  ))}
+</div>
+
 
           <ul className="support-list">
-            <li>Try: "How to reduce social media?"</li>
-            <li>Try: "Is my score good?"</li>
-            <li>Try: "Is night usage bad?"</li>
-          </ul>
+  <li onClick={() => generateReply("score")}>
+    📊 What is my detox score?
+  </li>
+
+  <li onClick={() => generateReply("night usage")}>
+    🌙 Analyze my night usage
+  </li>
+
+  <li onClick={() => generateReply("social media")}>
+    📱 How is my social media usage?
+  </li>
+
+  <li onClick={() => generateReply("hindi")}>
+    🇮🇳 Batao Hindi mein
+  </li>
+
+  <li onClick={() => generateReply("motivate me")}>
+    💪 Motivate me
+  </li>
+</ul>
+
         </section>
       </main>
 
